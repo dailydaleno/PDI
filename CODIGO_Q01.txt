@@ -1,0 +1,345 @@
+#include "opencv2/highgui/highgui.hpp"
+#include "opencv2/imgproc/imgproc.hpp"
+#include "opencv2/features2d/features2d.hpp"
+#include "opencv2/core/core.hpp"
+#include <opencv2/opencv.hpp>
+#include <iostream> // for standard I/O
+#include <string>   // for strings
+#include <stdio.h>
+#include <vector>
+#include <math.h>
+#include <sys/time.h>
+
+using namespace cv;
+using namespace std;
+
+int arredondar (double numero);
+
+Mat convertGrayScala (IplImage* src);
+
+Mat create_histogram_image(Mat src);
+
+int getOtsuThreshold(Mat src);
+
+Mat applySegmentation(Mat src, int thresholdIni, int thresholdFin);
+
+int maxValuePixel (Mat src);
+
+Mat convertNegative (Mat src, int maiorValuePixel);
+
+Mat equalizacaoHistograma (Mat src);
+
+void salvarImagem(const char * endereco, Mat img);
+
+//------------------------------------------------------------------------------------------------------------
+int main (int argc, char *argv[]) {
+	//*********************************************************************************
+	//CARREGA O ARQUIVO CONTENDO A IMAGEM
+	string filename = "C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 1/Questão 01.jpg";
+	IplImage* img = cvLoadImage(filename.c_str(), CV_LOAD_IMAGE_COLOR);
+
+	if(! img->imageData ) {  // Check for invalid input
+		cout <<  "Could not open or find the image" << std::endl ;
+		cv::waitKey(5000);
+		return -1;
+	}
+	int qtdLinha = img->height, qtdColuna = img->width;
+
+	/*********************************************************
+	* CONVERTER PARA ESCALA DE CINZA
+	**********************************************************/
+	//Cria uma imagem "imgBin" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgGray = Mat(qtdLinha, qtdColuna, CV_8UC(1));
+	imgGray = convertGrayScala(img);
+	cv::namedWindow("Imagem escala cinza", CV_WINDOW_AUTOSIZE);
+	cv::imshow("Imagem escala cinza", imgGray);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 1/Gray.jpg", imgGray);
+
+	//*******************************************************************
+	Mat out_hist = create_histogram_image(imgGray);
+	cv::namedWindow("Histograma");
+	cv::imshow("Histograma", out_hist);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 1/histograma.jpg", out_hist);
+
+	//*******************************************************************
+	//Equalização de histograma
+	//*******************************************************************
+	Mat imgEqualized = equalizacaoHistograma(imgGray);  //a imagem de entrada "imgGray" deve ter apenas um canal
+	cv::namedWindow("Imagem Equalização de Histograma");
+	cv::imshow("Imagem Equalização de Histograma", imgEqualized);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 1/imgEqualized.jpg", imgEqualized);
+
+	//*******************************************************************
+	Mat out_hist1 = create_histogram_image(imgEqualized);
+	cv::namedWindow("Histograma imagem Equalizado");
+	cv::imshow("Histograma imagem Equalizado", out_hist1);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 1/Histograma_imgEqualized.jpg", out_hist1);
+
+
+	/*********************************************************
+	* NEGATIVE IMAGE
+	**********************************************************/
+	//Cria uma imagem "imgNegative" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgNegative = Mat(qtdLinha, qtdColuna, CV_8UC(1));
+	imgNegative = convertNegative(imgGray, maxValuePixel(imgGray));
+	cv::namedWindow("Imagem negativa");
+	cv::imshow("Imagem negativa", imgNegative);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 1/imgNegative.jpg", imgNegative);
+
+	//*******************************************************************
+	Mat imgSegmentationIntervaloPixel = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+	imgSegmentationIntervaloPixel = applySegmentation(imgNegative, 127, 255);
+	cv::namedWindow("Segmentação simples intervalo pixel", CV_WINDOW_AUTOSIZE);
+	cv::imshow("Segmentação simples intervalo pixel", imgSegmentationIntervaloPixel);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 1/imgSegmentationIntervaloPixel.jpg", imgSegmentationIntervaloPixel);
+
+	//*******************************************************************
+	Mat imgSegmentationSimples = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+	imgSegmentationSimples = applySegmentation(imgNegative, 127, -1);
+	cv::namedWindow("Segmentação simples", CV_WINDOW_AUTOSIZE);
+	cv::imshow("Segmentação simples", imgSegmentationSimples);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 1/imgSegmentationSimples.jpg", imgSegmentationSimples);
+
+	//*******************************************************************
+
+	Mat imgSegmentationOtsu = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+	int valorOtsuThreshold = getOtsuThreshold(imgNegative);
+	cout << "valor do Threshold Otsu: " << valorOtsuThreshold << endl;
+
+	imgSegmentationOtsu = applySegmentation(imgGray, valorOtsuThreshold, -1);
+	cv::namedWindow("Segmentação Otsu", CV_WINDOW_NORMAL);
+	cv::imshow("Segmentação Otsu", imgSegmentationOtsu);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 1/imgSegmentationOtsu.jpg", imgSegmentationOtsu);
+
+	//Wait for a keystroke in the window
+	cv::waitKey(0);
+	return 0;
+}
+
+//*********************************************************************************
+int arredondar (double numero) {
+	double fracao,inteiro;
+    fracao = modf(numero,&inteiro);
+    if (fracao > 0.5)
+    	return inteiro+1;
+    else
+    	return inteiro;
+}
+
+Mat convertGrayScala (IplImage* src) {
+	//Cria uma imagem "imgBin" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgOut = Mat(src->height, src->width, CV_8UC(1));
+	CvScalar pixel;
+	float valueGray;
+
+	//para cada pixel da imagem carregada, calcula o valor em escala de cinza
+	for (int i = 0; i < src->height; i++) {
+		for (int j = 0; j < src->width; j++) {
+			pixel = cvGet2D(src, i, j);
+			valueGray = (pixel.val[0])*0.299 + (pixel.val[1])*0.587 + (pixel.val[2])*0.114;
+			imgOut.at<uchar>(i, j) = (uchar) arredondar(valueGray);
+		}
+	}
+	return imgOut;
+}
+
+int maxValuePixel (Mat src) {
+	int maior = 0;
+
+	for (int i = 0; i < src.rows; i++) {
+		for (int j = 0; j < src.cols; j++) {
+			if( (int) src.at<uchar>(i, j) > maior)
+				maior = (int) src.at<uchar>(i, j);
+			//cout << i << "," << j << " = " << (int) src.at<uchar>(i, j) << endl;
+		}
+	}
+	return maior;
+}
+
+Mat convertNegative (Mat src, int maiorValuePixel) {
+	//Cria uma imagem "imgBin" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgOut = Mat(src.rows, src.cols, CV_8UC(1));
+
+	//para cada pixel da imagem carregada, calcula o valor em escala de cinza
+	for (int i = 0; i < src.rows; i++) {
+		for (int j = 0; j < src.cols; j++) {
+			imgOut.at<uchar>(i, j) = (uchar) (maiorValuePixel - (int) src.at<uchar>(i, j));
+		}
+	}
+	return imgOut;
+}
+
+Mat create_histogram_image(Mat src) {
+  // Establish the number of bins
+  int histSize = 256;
+
+  // Set the ranges ( for B,G,R) )
+  float range[] = { 0, 256 };
+  const float* histRange = { range };
+
+  bool uniform = true;
+  bool accumulate = false;
+
+  Mat hist;
+
+  // Compute the histograms:
+  calcHist( &src, 1, 0, Mat(), hist, 1, &histSize, &histRange, uniform, accumulate );
+
+  // Draw the histograms for B, G and R
+  int hist_w = src.cols;//512;
+  int hist_h = src.rows;//400;
+  int bin_w = cvRound( (double) hist_w/histSize );
+
+  Mat histImage( hist_h, hist_w, CV_8UC1, Scalar(0) );
+
+  normalize(hist, hist, 0, histImage.rows, NORM_MINMAX, -1, Mat() );
+
+  // Draw for each channel
+  for( int i = 1; i < histSize; i++ )
+  {
+      line( histImage, Point( bin_w*(i-1), hist_h - cvRound(hist.at<float>(i-1)) ) ,
+                       Point( bin_w*(i), hist_h - cvRound(hist.at<float>(i)) ),
+                       Scalar( 255), 2, 8, 0  );
+  }
+  return histImage;
+}
+
+int getOtsuThreshold(Mat src) {
+	int qtdLinha = src.rows;
+	int qtdColuna = src.cols;
+
+	//------------------------------------------------------
+	//OBTÉM O HISTOGRAMA DA IMAGEM
+	int qtdIntensidade = 256;
+	int histograma[qtdIntensidade];
+
+	//inicializa cada posição do vetor com 0
+	memset(histograma, 0, sizeof(int) * qtdIntensidade);
+
+	for (int i = 0; i < qtdLinha; i++) {
+		for (int j = 0; j < qtdColuna; j++) {
+			histograma[(int) src.at<uchar>(i, j)]++;
+			//cout << "mat[" << i << "," << j << "]: " << (int) src.at<uchar>(i, j) << endl;
+		}
+	}
+	//------------------------------------------------------
+	//OBTÉM O VALOR DO THRESHOLD SEGUINDO ALGORITMO DE OTSU
+	float sum = 0;
+
+	for(int i = 0; i < 256; i++) {
+		sum += i * histograma[i];
+		//cout << "histograma[" << i << "]: " << histograma[i] << endl;
+	}
+
+	float sumB = 0;
+	int wB = 0;
+	int wF = 0;
+
+	float varMax = 0;
+	int threshold = 0;
+
+	for(int i = 0 ; i < 256 ; i++) {
+		wB += histograma[i]; //acumula a qtd de pixels por nível de intensidade
+
+		if(wB == 0) continue;
+
+		wF = (qtdLinha * qtdColuna) - wB;
+
+		if(wF == 0) break;
+
+		sumB += (float) (i * histograma[i]);
+
+		float mB = sumB / wB;
+		float mF = (sum - sumB) / wF;
+
+		float varBetween = (float) wB * (float) wF * (mB - mF) * (mB - mF);
+
+		if(varBetween > varMax) {
+			varMax = varBetween;
+			threshold = i;
+		}
+	}
+	return threshold;
+}
+
+Mat applySegmentation(Mat src, int thresholdIni, int thresholdFin) {
+	int qtdLinha = src.rows;
+	int qtdColuna = src.cols;
+
+	//Cria uma imagem "imgBin" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgOut = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+	int pixelValue = 0;
+
+	for (int i = 0; i < qtdLinha; i++) {
+		for (int j = 0; j < qtdColuna; j++) {
+			pixelValue = (int) src.at<uchar>(i, j);
+
+			//se o valor da segunda var do intervalo for igual a -1, então considera apenas a primeira var para aplicar o limiar
+			if (thresholdFin == -1) {
+				if (pixelValue > thresholdIni) {
+					imgOut.at<uchar>(i, j) = 255;
+				}
+				//aplica limiar considerando o intervalo de valores
+			} else if (pixelValue > thresholdIni && pixelValue < thresholdFin) {
+				imgOut.at<uchar>(i, j) = 255;
+			}
+		}
+	}
+	return imgOut;
+}
+
+Mat equalizacaoHistograma (Mat src) {
+	int qtdLinha = src.rows;
+	int qtdColuna = src.cols;
+
+	//calculo do histograma
+	int qtdIntensidade = 256;
+	int histograma[qtdIntensidade];  //vetor com a quantidade de pixels por valor de intensidade
+	int n[qtdIntensidade];  //vetor com valor de quantitativo normalizado
+	int s[qtdIntensidade]; //vetor de novas intensidades (será armazenado os valores arredondados para + ou -)
+
+	//inicializa cada posição do vetor com 0
+	memset(histograma, 0, sizeof(int) * qtdIntensidade);
+	memset(n, 0, sizeof(int) * qtdIntensidade);
+	memset(s, 0, sizeof(int) * qtdIntensidade);
+
+	//Passo 1: obtém a quantidade de pixel por intensidade
+	for(int i = 0; i < qtdLinha; ++i) {
+		for(int j = 0; j < qtdColuna; ++j) {
+			histograma[(int) src.at<uchar>(i, j)]++;
+		}
+	}
+	int MN = qtdLinha * qtdColuna; //quantidade total de pixels
+
+	//Passo 2: realiza a normalização das quantidade de cada uma das intensidades
+	//esses valores não influenciam nos cálculos
+	for(int i = 0; i < qtdIntensidade; ++i) {
+		n[i] = (int) (histograma[i] / MN);
+	}
+	int acumQtdPixel = 0;  //acumula a qtd de pixel de cada uma das intensidades
+
+	//Passo 3: cálcula os novos valores de cada uma das intensidades, estes valores são arredondados para + ou -
+	for(int i = 0; i < qtdIntensidade; ++i) {
+		acumQtdPixel += histograma[i]; //acumula a qtd de pixel de cada intensidade
+		s[i] = (int) (round(((qtdIntensidade-1) * acumQtdPixel) / MN));
+	}
+	//Cria uma imagem com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgOut = Mat(qtdLinha, qtdColuna, CV_8UC(1));
+
+	//Passo 4: redistribui os novos valores de intensidade equalizados aos pixels da matriz equalizada
+	for(int i = 0; i < qtdLinha; ++i) {
+		for(int j = 0; j < qtdColuna; ++j) {
+			imgOut.at<uchar>(i, j) = (uchar) s[(int) src.at<uchar>(i, j)];
+		}
+	}
+	return imgOut;
+}
+
+void salvarImagem(const char * endereco, Mat img) {
+	IplImage* imgIpl = new IplImage(img);
+
+	if(!cvSaveImage(endereco, imgIpl, 0))
+		cout << "Erro ao salva a imagem" << endl;
+	else
+		cout << "Imagem salva com sucesso" << endl;
+}

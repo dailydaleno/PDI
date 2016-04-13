@@ -1,0 +1,238 @@
+#include "opencv2/highgui/highgui.hpp"
+#include "opencv2/imgproc/imgproc.hpp"
+#include "opencv2/features2d/features2d.hpp"
+#include "opencv2/core/core.hpp"
+#include <opencv2/opencv.hpp>
+#include <iostream> // for standard I/O
+#include <string>   // for strings
+#include <stdio.h>
+#include <vector>
+#include <math.h>
+#include <sys/time.h>
+
+using namespace cv;
+using namespace std;
+
+int arredondamento (double numero);
+
+Mat convertGrayScala (IplImage* src);
+
+int maxValuePixel (Mat src);
+
+Mat convertNegative (Mat src, int maiorValuePixel);
+
+Mat gammaFilter(Mat image, double gamma);
+
+void salvarImagem(const char * endereco, Mat img);
+
+Mat convertBinary (Mat src, int limiar);
+
+Mat equalizacaoHistograma (Mat src);
+
+//------------------------------------------------------------------------------------------------------------
+int main (int argc, char *argv[]) {
+	//*********************************************************************************
+	//CARREGA O ARQUIVO CONTENDO A IMAGEM
+
+	string filename = "C:/Documents and Settings/usuario/Meus documentos/Dropbox/Prova01_2014/Questão 03.jpg";
+	IplImage* img = cvLoadImage(filename.c_str(), CV_LOAD_IMAGE_COLOR);
+
+	if(! img->imageData ) { // Check for invalid input
+		cout <<  "Could not open or find the image" << std::endl ;
+		cv::waitKey(5000);
+		return -1;
+	}
+	int qtdLinha = img->height, qtdColuna = img->width;
+
+	/*********************************************************
+	* CONVERTER PARA ESCALA DE CINZA
+	**********************************************************/
+	//Cria uma imagem "imgBin" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgGray = Mat(qtdLinha, qtdColuna, CV_8UC(1));
+	imgGray = convertGrayScala(img);
+	cv::namedWindow("Imagem escala cinza", CV_WINDOW_NORMAL);
+	cv::imshow("Imagem escala cinza", imgGray);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 3/Gray.jpg", imgGray);
+
+	/*
+	 * Correção Gamma
+	 */
+	Mat imgGamma = Mat(qtdLinha, qtdColuna, CV_8UC(1));
+	imgGamma = gammaFilter(imgGray, 0.8);
+	cv::namedWindow("Imagem Gamma - 0.8");
+	cv::imshow("Imagem Gamma - 0.8", imgGamma);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 3/imgGamma 08.jpg", imgGamma);
+
+	imgGamma = gammaFilter(imgGray, 0.6);
+	cv::namedWindow("Imagem Gamma - 0.6", CV_WINDOW_NORMAL);
+	cv::imshow("Imagem Gamma - 0.6", imgGamma);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 3/imgGamma 06.jpg", imgGamma);
+
+	imgGamma = gammaFilter(imgGray, 0.4);
+	cv::namedWindow("Imagem Gamma - 0.4", CV_WINDOW_NORMAL);
+	cv::imshow("Imagem Gamma - 0.4", imgGamma);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 3/imgGamma 04.jpg", imgGamma);
+
+	/*
+	 * Equalização de Histograma
+	 */
+	Mat imgEqualized = equalizacaoHistograma(imgGray);  //a imagem de entrada "imgGray" deve ter apenas um canal
+	cv::namedWindow("Imagem Equalização de Histograma");
+	cv::imshow("Imagem Equalização de Histograma", imgEqualized);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 3/imgEqualized.jpg", imgEqualized);
+
+	//Wait for a keystroke in the window
+	cv::waitKey(0);
+	return 0;
+}
+//*********************************************************************************
+int arredondamento (double numero)
+{   double fracao,inteiro;
+    fracao = modf(numero,&inteiro);
+    if (fracao > 0.5)
+    	return inteiro+1;
+    else
+    	return inteiro;
+}
+
+Mat convertGrayScala (IplImage* src) {
+	//Cria uma imagem "imgBin" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgOut = Mat(src->height, src->width, CV_8UC(1));
+	CvScalar pixel;
+	float valueGray;
+
+	//para cada pixel da imagem carregada, calcula o valor em escala de cinza
+	for (int i = 0; i < src->height; i++) {
+		for (int j = 0; j < src->width; j++) {
+			pixel = cvGet2D(src, i, j);
+			valueGray = (pixel.val[0])*0.299 + (pixel.val[1])*0.587 + (pixel.val[2])*0.114;
+			imgOut.at<uchar>(i, j) = (uchar) arredondamento(valueGray);
+		}
+	}
+	return imgOut;
+}
+
+int maxValuePixel (Mat src) {
+	int maior = 0;
+
+	for (int i = 0; i < src.rows; i++) {
+		for (int j = 0; j < src.cols; j++) {
+			if( (int) src.at<uchar>(i, j) > maior)
+				maior = (int) src.at<uchar>(i, j);
+			//cout << i << "," << j << " = " << (int) src.at<uchar>(i, j) << endl;
+		}
+	}
+	return maior;
+}
+
+Mat convertNegative (Mat src, int maiorValuePixel) {
+	//Cria uma imagem "imgBin" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgOut = Mat(src.rows, src.cols, CV_8UC(1));
+
+	//para cada pixel da imagem carregada, calcula o valor em escala de cinza
+	for (int i = 0; i < src.rows; i++) {
+		for (int j = 0; j < src.cols; j++) {
+			imgOut.at<uchar>(i, j) = (uchar) (maiorValuePixel - (int) src.at<uchar>(i, j));
+		}
+	}
+	return imgOut;
+}
+
+Mat gammaFilter(Mat src, double gamma) {
+	Mat output = Mat(src.rows, src.cols, src.depth());
+
+	//para cada pixel da image, eleva a gamma (correção radiométrica)
+	for (int i = 0; i < src.rows; i++) {
+		for (int j = 0; j < src.cols; j++) {
+			output.at<uchar>(i, j) = (uchar) (pow((int) src.at<uchar>(i, j), gamma));
+			//cout << i << "," << j << " = " << (int) output.at<uchar>(i, j) << endl;
+		}
+	}
+
+	//divide o maior pixel da imagem anterior pelo novo valor do maior pixel
+	int con = maxValuePixel(src) / maxValuePixel(output);
+
+	for (int i = 0; i < src.rows; i++) {
+		for (int j = 0; j < src.cols; j++) {
+			output.at<uchar>(i, j) = (uchar) (min(255, (int) (src.at<uchar>(i, j))*con));
+			//cout << i << "," << j << " = " << (int) output.at<uchar>(i, j) << endl;
+		}
+	}
+	return output;
+}
+
+void salvarImagem(const char * endereco, Mat img) {
+	IplImage* imgIpl = new IplImage(img);
+
+	if(!cvSaveImage(endereco, imgIpl, 0))
+		cout << "Erro ao salva a imagem" << endl;
+	else
+		cout << "Imagem salva com sucesso" << endl;
+}
+
+Mat convertBinary (Mat src, int limiar) {
+	//Cria uma imagem "imgBin" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgOut = Mat(src.rows, src.cols, CV_8UC(1));
+
+	//para cada pixel da imagem carregada, calcula o valor em escala de cinza
+	for (int i = 0; i < src.rows; i++) {
+		for (int j = 0; j < src.cols; j++) {
+			//para cada pixel coordenada rgb, se um determinado canal estiver com tom acima DO LIMIAR
+			if( (int) src.at<uchar>(i, j) > limiar) {
+				//transforma pixel em branco
+				imgOut.at<uchar>(i, j) = 255;
+			}else{
+				//transforma pixel em preto
+				imgOut.at<uchar>(i, j) = 0;
+			}
+		}
+	}
+	return imgOut;
+}
+
+Mat equalizacaoHistograma (Mat src) {
+	int qtdLinha = src.rows;
+	int qtdColuna = src.cols;
+
+	//calculo do histograma
+	int qtdIntensidade = 256;
+	int histograma[qtdIntensidade];  //vetor com a quantidade de pixels por valor de intensidade
+	int n[qtdIntensidade];  //vetor com valor de quantitativo normalizado
+	int s[qtdIntensidade]; //vetor de novas intensidades (será armazenado os valores arredondados para + ou -)
+
+	//inicializa cada posição do vetor com 0
+	memset(histograma, 0, sizeof(int) * qtdIntensidade);
+	memset(n, 0, sizeof(int) * qtdIntensidade);
+	memset(s, 0, sizeof(int) * qtdIntensidade);
+
+	//Passo 1: obtém a quantidade de pixel por intensidade
+	for(int i = 0; i < qtdLinha; ++i) {
+		for(int j = 0; j < qtdColuna; ++j) {
+			histograma[(int) src.at<uchar>(i, j)]++;
+		}
+	}
+	int MN = qtdLinha * qtdColuna; //quantidade total de pixels
+
+	//Passo 2: realiza a normalização das quantidade de cada uma das intensidades
+	//esses valores não influenciam nos cálculos
+	for(int i = 0; i < qtdIntensidade; ++i) {
+		n[i] = (int) (histograma[i] / MN);
+	}
+	int acumQtdPixel = 0;  //acumula a qtd de pixel de cada uma das intensidades
+
+	//Passo 3: cálcula os novos valores de cada uma das intensidades, estes valores são arredondados para + ou -
+	for(int i = 0; i < qtdIntensidade; ++i) {
+		acumQtdPixel += histograma[i]; //acumula a qtd de pixel de cada intensidade
+		s[i] = (int) (round(((qtdIntensidade-1) * acumQtdPixel) / MN));
+	}
+	//Cria uma imagem com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgOut = Mat(qtdLinha, qtdColuna, CV_8UC(1));
+
+	//Passo 4: redistribui os novos valores de intensidade equalizados aos pixels da matriz equalizada
+	for(int i = 0; i < qtdLinha; ++i) {
+		for(int j = 0; j < qtdColuna; ++j) {
+			imgOut.at<uchar>(i, j) = (uchar) s[(int) src.at<uchar>(i, j)];
+		}
+	}
+	return imgOut;
+}

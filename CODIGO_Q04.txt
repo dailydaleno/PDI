@@ -1,0 +1,1330 @@
+#include "opencv2/highgui/highgui.hpp"
+#include "opencv2/imgproc/imgproc.hpp"
+#include "opencv2/features2d/features2d.hpp"
+#include "opencv2/core/core.hpp"
+#include <opencv2/opencv.hpp>
+#include <iostream> // for standard I/O
+#include <string>   // for strings
+#include <stdio.h>
+#include <vector>
+#include <math.h>
+#include <sys/time.h>
+
+using namespace cv;
+using namespace std;
+
+int arredondar (double numero);
+
+Mat convertGrayScala (IplImage* src);
+
+Mat create_histogram_image(Mat src);
+
+int getOtsuThreshold(Mat src);
+
+Mat applySegmentation(Mat src, int thresholdIni, int thresholdFin);
+
+int obtemValorPixelErosao(Mat src, int linha, int coluna, string tipoVizinhanca);
+
+Mat erosao(Mat src);
+
+Mat erosao1(Mat src, string tipoVizinhanca);
+
+int obtemValorPixelDilatacao(Mat src, int linha, int coluna, string tipoVizinhanca);
+
+Mat dilatacao(Mat src, string tipovizinhanca);
+
+int quantidadeVizinhos4NPretos(Mat src, int x, int y);
+
+int quantidadeVizinhos4NBracos(Mat src, int x, int y);
+
+int obtemValorPixelMedia(Mat src, int linha, int coluna);
+
+int maxValuePixel (Mat src);
+
+Mat convertNegative (Mat src, int maiorValuePixel);
+
+Mat diffImg(Mat srcImgBinarizada, Mat srcImgGray);
+
+Mat rotularRegiao(Mat srcOriginal, Mat srcBinarizada);
+
+int maiorLabelRegiao(Mat matLab);
+
+Mat zoomInterpolacaoBilinear(Mat srcImgOriginal, Mat srcImgROI);
+
+Mat zoomInterpolacaoBilinear1(Mat srcImgOriginal, Mat srcImgROI);
+
+float polarizacaoCubica(float valor0, float valor1, float valor2, float valor3, float fracao);
+
+Mat zoomInterpolacaoBicubica(Mat srcImgOriginal, Mat srcImgROI);
+
+Mat zoomInterpolacaoLinear(Mat srcImgOriginal, Mat srcImgROI);
+
+void salvarImagem(const char * endereco, Mat img);
+
+//------------------------------------------------------------------------------------------------------------
+int main (int argc, char *argv[]) {
+	//*********************************************************************************
+	//CARREGA O ARQUIVO CONTENDO A IMAGEM
+	string filename = "C:/Documents and Settings/usuario/Meus documentos/Dropbox/Prova01_2014/Questão 04.jpg";
+
+	IplImage* img = cvLoadImage(filename.c_str(), CV_LOAD_IMAGE_COLOR);
+
+	if(! img->imageData ) {  // Check for invalid input
+		cout <<  "Could not open or find the image" << std::endl ;
+		cv::waitKey(5000);
+		return -1;
+	}
+	int qtdLinha = img->height, qtdColuna = img->width;
+
+	/*********************************************************
+	* CONVERTER PARA ESCALA DE CINZA
+	**********************************************************/
+	//Cria uma imagem "imgBin" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgGray = Mat(qtdLinha, qtdColuna, CV_8UC(1));
+	imgGray = convertGrayScala(img);
+	cv::namedWindow("Imagem escala cinza", CV_WINDOW_AUTOSIZE);
+	cv::imshow("Imagem escala cinza", imgGray);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 4/Gray.jpg", imgGray);
+
+	//*********************************************************
+	//cria o histograma da imagem
+	Mat out_hist = create_histogram_image(imgGray);
+	cv::namedWindow("Histograma");
+	cv::imshow("Histograma", out_hist);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 4/histograma.jpg", out_hist);
+
+	/*********************************************************
+	* NEGATIVE IMAGE
+	**********************************************************/
+	//Cria uma imagem "imgBin" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgNegative = Mat(qtdLinha, qtdColuna, CV_8UC(1));
+	imgNegative = convertNegative(imgGray, maxValuePixel(imgGray));
+	cv::namedWindow("Imagem negativa");
+	cv::imshow("Imagem negativa", imgNegative);
+
+	/*********************************************************
+	* SEGMENTAÇÃO DA IMAGEM
+	**********************************************************/
+	Mat imgSegmentation = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+	imgSegmentation = applySegmentation(imgGray, 180, 255);
+	cv::namedWindow("Segmentação simples", CV_WINDOW_AUTOSIZE);
+	cv::imshow("Segmentação simples", imgSegmentation);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 4/Limiarização.jpg", imgSegmentation);
+
+/*
+	Mat imgSegmentation1 = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+	imgSegmentation1 = applySegmentation(imgGray, 180, -1);
+	cv::namedWindow("Segmentação simples1", CV_WINDOW_AUTOSIZE);
+	cv::imshow("Segmentação simples1", imgSegmentation1);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 4/Limiarização1.jpg", imgSegmentation1);
+*/
+
+	int qtdInteracao = 5;  //determina a qtd de vezes que a erosão e a dilatação serão executadas
+	string tipoVizinhanca = "8N";
+
+	//**************************************************************
+	//Abertura
+	/*
+	 * Erosão
+	 */
+	Mat imgErosao = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+	imgErosao = imgSegmentation.clone();
+	for (int i = 0; i < qtdInteracao; i++) {
+		imgErosao = erosao1(imgErosao, tipoVizinhanca);
+	}
+	cv::namedWindow("Erosão", CV_WINDOW_AUTOSIZE);
+	cv::imshow("Erosão", imgErosao);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 4/imgErosao.jpg", imgErosao);
+
+	/*
+	 * Dilatação
+	 */
+	Mat imgDilatacao = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+	imgDilatacao = imgErosao.clone();
+	for (int i = 0; i < qtdInteracao; i++) {
+		imgDilatacao = dilatacao(imgDilatacao, tipoVizinhanca);
+	}
+	cv::namedWindow("Imagem Abertura = 5 interações de (Erosao x Dilatacao)", CV_WINDOW_AUTOSIZE);
+	cv::imshow("Imagem Abertura = 5 interações de (Erosao x Dilatacao)", imgDilatacao);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 4/imgAbertura5ErosaoDilatacao.jpg", imgDilatacao);
+
+	//**************************************************************
+	//Fechamento
+	/*
+	 * Dilatação
+	 */
+	Mat imgDilatacao1 = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+	imgDilatacao1 = imgSegmentation.clone();
+	for (int i = 0; i < qtdInteracao; i++) {
+		imgDilatacao1 = dilatacao(imgDilatacao1, tipoVizinhanca);
+	}
+	//cv::namedWindow("Dilatação 1", CV_WINDOW_AUTOSIZE);
+	//cv::imshow("Dilatação 1", imgDilatacao1);
+	//salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 4/imgDilatacao1.jpg", imgDilatacao1);
+
+	/*
+	 * Erosão
+	 */
+	Mat imgErosao1 = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+	imgErosao1 = imgDilatacao1.clone();
+	for (int i = 0; i < qtdInteracao; i++) {
+		imgErosao1 = erosao1(imgErosao1, tipoVizinhanca);
+	}
+	cv::namedWindow("Imagem Fechamento = 5 interações (Dilatacao x Erosao)", CV_WINDOW_AUTOSIZE);
+	cv::imshow("Imagem Fechamento = 5 interações (Dilatacao x Erosao)", imgErosao1);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 4/imgFechamento5DilatacaoErosao.jpg", imgErosao1);
+
+	/*
+	 * Cria imagem com pixels em escala de cinza na imagem binarizada
+	 */
+	Mat imgDiffAbertura = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+	imgDiffAbertura = diffImg(imgDilatacao, imgGray);
+
+	cv::namedWindow("Imagem Abertura = 5 interações de (Erosao x Dilatacao) - Original", CV_WINDOW_AUTOSIZE);
+	cv::imshow("Imagem Abertura = 5 interações de (Erosao x Dilatacao) - Original", imgDiffAbertura);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 4/imgAbertura5ErosaoDilatacaoOriginal.jpg", imgDiffAbertura);
+
+	Mat imgDiffFechamento = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+	imgDiffFechamento = diffImg(imgErosao1, imgGray);
+
+	cv::namedWindow("Imagem Fechamento = 5 interações (Dilatacao x Erosao) - Original", CV_WINDOW_AUTOSIZE);
+	cv::imshow("Imagem Fechamento = 5 interações (Dilatacao x Erosao) - Original", imgDiffFechamento);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 4/imgFechamento5DilatacaoErosaoOriginal.jpg", imgDiffFechamento);
+
+	//**************************************************************
+	//Imagem com a região de interesse demarcada
+	Mat imgROIRecortada;
+	imgROIRecortada = rotularRegiao( imgGray, imgErosao1);
+	cv::namedWindow("Imagem ROI Recortada", CV_WINDOW_NORMAL);
+	cv::imshow("Imagem ROI Recortada", imgROIRecortada);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 4/imgROIRecortada.jpg", imgROIRecortada);
+	cout << "imgROIRecortada = " << imgROIRecortada.rows << " x " << imgROIRecortada.cols << endl;
+
+	//*************************************************************************
+	//INTERPOLAÇÃO LINEAR
+	//*************************************************************************
+	Mat imgZoomLinear;
+	imgZoomLinear = zoomInterpolacaoLinear(imgGray, imgROIRecortada);
+	cv::namedWindow("Imagem Zoom Linear", CV_WINDOW_NORMAL);
+	cv::imshow("Imagem Zoom Linear", imgZoomLinear);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 4/imgZoomLinear.jpg", imgZoomLinear);
+
+	//*************************************************************************
+	//INTERPOLAÇÃO BILINEAR
+	//*************************************************************************
+	Mat imgZoomBiLinear;
+	imgZoomBiLinear = zoomInterpolacaoBilinear1(imgGray, imgROIRecortada);
+	cv::namedWindow("Imagem Zoom Bilinear", CV_WINDOW_NORMAL);
+	cv::imshow("Imagem Zoom Bilinear", imgZoomBiLinear);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 4/imgZoomBiLinear.jpg", imgZoomBiLinear);
+
+	//*************************************************************************
+	//INTERPOLAÇÃO BICUBICA
+	//*************************************************************************
+	Mat imgZoomBiCubica;
+	imgZoomBiCubica = zoomInterpolacaoBicubica(imgGray, imgROIRecortada);
+	cv::namedWindow("Imagem Zoom Bicubica", CV_WINDOW_NORMAL);
+	cv::imshow("Imagem Zoom Bicubica", imgZoomBiCubica);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 4/imgZoomBiCubica.jpg", imgZoomBiCubica);
+
+
+//**************************************************************
+
+	/*
+	 * FAZER ALGORITMO PARA ENCONTRAR COMPONENTES CONECTADOS E CONTAR QUANTOS EXISTEM EM UMA CERTA REGIAO
+	 * SE ESSA QTD FOR MAIOR QUE X % DA QTD TOTAL DE PIXELS DA IMAGEM, ENTÃO MARCA COMO REGIÃO DE INTERESSE
+	 */
+
+	/*********************************************************
+	* Filtro da Média
+	**********************************************************
+	//Cria uma imagem "imgMedia" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgMedia = Mat(qtdLinha, qtdColuna, CV_8UC(1));
+
+	for (int linha = 0; linha < qtdLinha; linha++) {
+		for (int coluna = 0; coluna < qtdColuna; coluna++) {
+			imgMedia.at<uchar>(linha, coluna) = obtemValorPixelMedia(imgErosao, linha, coluna);
+		}
+	}
+
+	cv::namedWindow("Imagem Média", CV_WINDOW_AUTOSIZE);
+	cv::imshow("Imagem Média", imgMedia);
+*/
+
+/*
+	Mat imgSegmentationOtsu = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+
+	int valorOtsuThreshold = getOtsuThreshold(imgGray);
+
+	cout << "valor do Threshold Otsu: " << valorOtsuThreshold << endl;
+
+	imgSegmentationOtsu = applySegmentation(imgGray, valorOtsuThreshold, -1);
+
+	cv::namedWindow("Segmentação Otsu", CV_WINDOW_NORMAL);
+	cv::imshow("Segmentação Otsu", imgSegmentationOtsu);
+*/
+
+	//Wait for a keystroke in the window
+	cv::waitKey(0);
+	return 0;
+
+}
+//*********************************************************************************
+int arredondar (double numero) {
+	double fracao,inteiro;
+    fracao = modf(numero,&inteiro);
+    if (fracao > 0.5)
+    	return inteiro+1;
+    else
+    	return inteiro;
+}
+
+Mat convertGrayScala (IplImage* src) {
+	//Cria uma imagem "imgBin" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgOut = Mat(src->height, src->width, CV_8UC(1));
+	CvScalar pixel;
+	float valueGray;
+
+	//para cada pixel da imagem carregada, calcula o valor em escala de cinza
+	for (int i = 0; i < src->height; i++) {
+		for (int j = 0; j < src->width; j++) {
+			pixel = cvGet2D(src, i, j);
+			valueGray = (pixel.val[0])*0.299 + (pixel.val[1])*0.587 + (pixel.val[2])*0.114;
+			imgOut.at<uchar>(i, j) = (uchar) arredondar(valueGray);
+		}
+	}
+	return imgOut;
+}
+
+int maxValuePixel (Mat src) {
+	int maior = 0;
+
+	for (int i = 0; i < src.rows; i++) {
+		for (int j = 0; j < src.cols; j++) {
+			if( (int) src.at<uchar>(i, j) > maior)
+				maior = (int) src.at<uchar>(i, j);
+			//cout << i << "," << j << " = " << (int) src.at<uchar>(i, j) << endl;
+		}
+	}
+	return maior;
+}
+
+Mat convertNegative (Mat src, int maiorValuePixel) {
+	//Cria uma imagem "imgBin" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgOut = Mat(src.rows, src.cols, CV_8UC(1));
+
+	//para cada pixel da imagem carregada, calcula o valor em escala de cinza
+	for (int i = 0; i < src.rows; i++) {
+		for (int j = 0; j < src.cols; j++) {
+			imgOut.at<uchar>(i, j) = (uchar) (maiorValuePixel - (int) src.at<uchar>(i, j));
+		}
+	}
+	return imgOut;
+}
+
+Mat create_histogram_image(Mat src) {
+
+  // Establish the number of bins
+  int histSize = 256;
+
+  // Set the ranges ( for B,G,R) )
+  float range[] = { 0, 256 };
+  const float* histRange = { range };
+
+  bool uniform = true;
+  bool accumulate = false;
+
+  Mat hist;
+
+  // Compute the histograms:
+  calcHist( &src, 1, 0, Mat(), hist, 1, &histSize, &histRange, uniform, accumulate );
+
+  // Draw the histograms for B, G and R
+  int hist_w = src.cols;//512;
+  int hist_h = src.rows;//400;
+  int bin_w = cvRound( (double) hist_w/histSize );
+
+  Mat histImage( hist_h, hist_w, CV_8UC1, Scalar(0) );
+
+  normalize(hist, hist, 0, histImage.rows, NORM_MINMAX, -1, Mat() );
+
+  // Draw for each channel
+  for( int i = 1; i < histSize; i++ )
+  {
+      line( histImage, Point( bin_w*(i-1), hist_h - cvRound(hist.at<float>(i-1)) ) ,
+                       Point( bin_w*(i), hist_h - cvRound(hist.at<float>(i)) ),
+                       Scalar( 255), 2, 8, 0  );
+  }
+  return histImage;
+}
+
+int getOtsuThreshold(Mat src) {
+
+	int qtdLinha = src.rows;
+	int qtdColuna = src.cols;
+
+	//------------------------------------------------------
+	//OBTÉM O HISTOGRAMA DA IMAGEM
+	int qtdIntensidade = 256;
+	int histograma[qtdIntensidade];
+
+	//inicializa cada posição do vetor com 0
+	memset(histograma, 0, sizeof(int) * qtdIntensidade);
+
+	for (int i = 0; i < qtdLinha; i++) {
+		for (int j = 0; j < qtdColuna; j++) {
+			histograma[(int) src.at<uchar>(i, j)]++;
+			//cout << "mat[" << i << "," << j << "]: " << (int) src.at<uchar>(i, j) << endl;
+		}
+	}
+	//------------------------------------------------------
+	//OBTÉM O VALOR DO THRESHOLD SEGUINDO ALGORITMO DE OTSU
+	float sum = 0;
+
+	for(int i = 0; i < 256; i++) {
+		sum += i * histograma[i];
+		//cout << "histograma[" << i << "]: " << histograma[i] << endl;
+	}
+
+	float sumB = 0;
+	int wB = 0;
+	int wF = 0;
+
+	float varMax = 0;
+	int threshold = 0;
+
+	//cout << "qtd pixels: " << (qtdLinha * qtdColuna) << endl;
+
+	for(int i = 0 ; i < 256 ; i++) {
+		wB += histograma[i]; //acumula a qtd de pixels por nível de intensidade
+
+		if(wB == 0) continue;
+
+		wF = (qtdLinha * qtdColuna) - wB;
+
+		//cout << "wB: " << wB << "   wF: " << wF << endl;
+
+		if(wF == 0) break;
+
+		sumB += (float) (i * histograma[i]);
+
+		float mB = sumB / wB;
+		float mF = (sum - sumB) / wF;
+
+		float varBetween = (float) wB * (float) wF * (mB - mF) * (mB - mF);
+
+		//cout << "varBetween: " << varBetween << endl;
+
+		if(varBetween > varMax) {
+			varMax = varBetween;
+			threshold = i;
+		}
+	}
+	return threshold;
+}
+
+Mat applySegmentation(Mat src, int thresholdIni, int thresholdFin) {
+
+	int qtdLinha = src.rows;
+	int qtdColuna = src.cols;
+
+	//Cria uma imagem "imgBin" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgOut = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+	//Mat imgOut = cv::Mat(qtdLinha, qtdColuna, CV_8UC(1));
+
+	int pixelValue = 0;
+
+	for (int i = 0; i < qtdLinha; i++) {
+		for (int j = 0; j < qtdColuna; j++) {
+			pixelValue = (int) src.at<uchar>(i, j);
+
+			//se o valor da segunda var do intervalo for igual a -1, então considera apenas a primeira var para aplicar o limiar
+			if (thresholdFin == -1) {
+				if (pixelValue > thresholdIni) {
+					imgOut.at<uchar>(i, j) = 255;
+				}
+				//aplica limiar considerando o intervalo de valores
+			} else if (pixelValue > thresholdIni && pixelValue < thresholdFin) {
+				imgOut.at<uchar>(i, j) = 255;
+			}
+		}
+	}
+	return imgOut;
+}
+
+Mat erosao(Mat src) {
+	int qtdLinha = src.rows;
+	int qtdColuna = src.cols;
+
+	//Cria uma imagem "imgBin" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgOut = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+
+	int pixelValue = 0;
+
+	for (int i = 0; i < qtdLinha; i++) {
+		for (int j = 0; j < qtdColuna; j++) {
+			pixelValue = (int) src.at<uchar>(i, j);
+
+			if (pixelValue == 255) {
+				//verifica quantidade de vizinhos pretos do determinado pixel branco
+				//caso seja menor que 2, então pinta de branco esse pixel
+				if (quantidadeVizinhos4NPretos(src, i, j) < 2) {
+					imgOut.at<uchar>(i, j) = 255;
+				}
+			}
+			else if (pixelValue == 0) {
+				//verifica quantidade de vizinhos brancos do determinado pixel preto
+				//caso seja maior que 2, então pinta de branco esse pixel
+				if (quantidadeVizinhos4NBracos(src, i, j) > 2) {
+					imgOut.at<uchar>(i, j) = 255;
+				}
+			}
+		}
+	}
+
+
+	return imgOut;
+}
+
+
+Mat erosao1(Mat src, string tipoVizinhanca) {
+	int qtdLinha = src.rows;
+	int qtdColuna = src.cols;
+
+	//Cria uma imagem "imgBin" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgOut = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+
+	for (int i = 0; i < qtdLinha; i++) {
+		for (int j = 0; j < qtdColuna; j++) {
+			imgOut.at<uchar>(i, j) = obtemValorPixelErosao(src, i, j, tipoVizinhanca);
+		}
+	}
+	return imgOut;
+}
+
+int obtemValorPixelErosao(Mat src, int linha, int coluna, string tipoVizinhanca) {
+	int qtdPixel = 0;
+
+	/*  máscara 3x3 - vizinhança de 8N
+
+	 	 mp1	mp2		mp3				l-1,c-1		l-1,c		l-1,c+1
+
+	 	 mp4	pixel	mp5		==>>	l,c-1		pixel		l,c+1
+
+	 	 mp6	mp7		mp8				l+1,c-1		l+1,c		l+1,c+1
+	*/
+
+	//mp2
+	if (linha > 0) {
+		int valorPixel = (int) src.at<uchar>(linha-1, coluna);
+
+		if (valorPixel == 0)
+			qtdPixel++;
+	}
+
+	//mp7
+	if (linha + 1 < src.rows) {
+		int valorPixel = (int) src.at<uchar>(linha+1, coluna);
+
+		if (valorPixel == 0)
+			qtdPixel++;
+	}
+
+	//mp4
+	if (coluna > 0) {
+		int valorPixel = (int) src.at<uchar>(linha, coluna-1);
+
+		if (valorPixel == 0)
+			qtdPixel++;
+	}
+
+	//mp5
+	if (coluna + 1 < src.cols) {
+		int valorPixel = (int) src.at<uchar>(linha, coluna+1);
+
+		if (valorPixel == 0)
+			qtdPixel++;
+	}
+
+	if (tipoVizinhanca == "8N") {
+		//mp1
+		if (linha > 0 && coluna > 0) {
+			int valorPixel = (int) src.at<uchar>(linha-1, coluna-1);
+
+			if (valorPixel == 255)
+				qtdPixel++;
+		}
+
+		//mp3
+		if (linha > 0 && coluna + 1 < src.cols) {
+			int valorPixel = (int) src.at<uchar>(linha-1, coluna+1);
+
+			if (valorPixel == 0)
+				qtdPixel++;
+		}
+
+		//mp6
+		if (linha + 1 < src.rows && coluna > 0) {
+			int valorPixel = (int) src.at<uchar>(linha+1, coluna-1);
+
+			if (valorPixel == 0)
+				qtdPixel++;
+		}
+
+		//mp8
+		if (linha + 1 < src.rows && coluna + 1 < src.cols) {
+			int valorPixel = (int) src.at<uchar>(linha+1, coluna+1);
+
+			if (valorPixel == 0)
+				qtdPixel++;
+		}
+	}
+
+	int novoValorPixel;
+
+	if (qtdPixel > 1)
+		novoValorPixel = 0;
+	else
+		novoValorPixel = 255;
+
+	return novoValorPixel;
+}
+
+Mat dilatacao(Mat src, string tipovizinhanca) {
+	int qtdLinha = src.rows;
+	int qtdColuna = src.cols;
+
+	//Cria uma imagem "imgBin" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgOut = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+
+	for (int i = 0; i < qtdLinha; i++) {
+		for (int j = 0; j < qtdColuna; j++) {
+			imgOut.at<uchar>(i, j) = (uchar) obtemValorPixelDilatacao(src, i, j, tipovizinhanca);
+		}
+	}
+	return imgOut;
+}
+
+int obtemValorPixelDilatacao(Mat src, int linha, int coluna, string tipoVizinhanca) {
+	int qtdPixel = 0;
+
+	/*  máscara 3x3 - vizinhança de 8N
+
+	 	 mp1	mp2		mp3				l-1,c-1		l-1,c		l-1,c+1
+
+	 	 mp4	pixel	mp5		==>>	l,c-1		pixel		l,c+1
+
+	 	 mp6	mp7		mp8				l+1,c-1		l+1,c		l+1,c+1
+	*/
+
+	//mp2
+	if (linha > 0) {
+		int valorPixel = (int) src.at<uchar>(linha-1, coluna);
+
+		if (valorPixel == 255)
+			qtdPixel++;
+	}
+
+	//mp7
+	if (linha + 1 < src.rows) {
+		int valorPixel = (int) src.at<uchar>(linha+1, coluna);
+
+		if (valorPixel == 255)
+			qtdPixel++;
+	}
+
+	//mp4
+	if (coluna > 0) {
+		int valorPixel = (int) src.at<uchar>(linha, coluna-1);
+
+		if (valorPixel == 255)
+			qtdPixel++;
+	}
+
+	//mp5
+	if (coluna + 1 < src.cols) {
+		int valorPixel = (int) src.at<uchar>(linha, coluna+1);
+
+		if (valorPixel == 255)
+			qtdPixel++;
+	}
+
+	if (tipoVizinhanca == "8N") {
+		//mp1
+		if (linha > 0 && coluna > 0) {
+			int valorPixel = (int) src.at<uchar>(linha-1, coluna-1);
+
+			if (valorPixel == 255)
+				qtdPixel++;
+		}
+
+		//mp3
+		if (linha > 0 && coluna + 1 < src.cols) {
+			int valorPixel = (int) src.at<uchar>(linha-1, coluna+1);
+
+			if (valorPixel == 255)
+				qtdPixel++;
+		}
+
+		//mp6
+		if (linha + 1 < src.rows && coluna > 0) {
+			int valorPixel = (int) src.at<uchar>(linha+1, coluna-1);
+
+			if (valorPixel == 255)
+				qtdPixel++;
+		}
+
+		//mp8
+		if (linha + 1 < src.rows && coluna + 1 < src.cols) {
+			int valorPixel = (int) src.at<uchar>(linha+1, coluna+1);
+
+			if (valorPixel == 255)
+				qtdPixel++;
+		}
+	}
+
+	int novoValorPixel;
+
+	if (qtdPixel > 1)
+		novoValorPixel = 255;
+	else
+		novoValorPixel = 0;
+
+	return novoValorPixel;
+}
+
+int quantidadeVizinhos4NPretos(Mat src, int x, int y) {
+
+	int norte, sul, oeste, leste, qtdVisinhoPreto = 0;
+
+	//norte
+	if (x > 0) {
+		norte = (int) (src.at<uchar>(x-1, y));
+		if(norte == 0)
+			qtdVisinhoPreto ++;
+	}
+
+	//sul
+	if (x + 1 <= src.rows){
+		sul = (int) (src.at<uchar>(x+1, y));
+		if(sul == 0)
+			qtdVisinhoPreto ++;
+	}
+
+	//oeste
+	if (y > 0) {
+		oeste = (int) (src.at<uchar>(x, y-1));
+		if(oeste == 0)
+			qtdVisinhoPreto ++;
+	}
+
+	//leste
+	if (y + 1 <= src.cols) {
+		leste = (int) (src.at<uchar>(x, y+1));
+		if(leste == 0)
+			qtdVisinhoPreto ++;
+	}
+
+	return qtdVisinhoPreto;
+}
+
+int quantidadeVizinhos4NBracos(Mat src, int x, int y) {
+
+	int norte, sul, oeste, leste, qtdVisinhoBranco = 0;
+
+	//norte
+	if (x > 0) {
+		norte = (int) (src.at<uchar>(x-1, y));
+		if(norte == 255)
+			qtdVisinhoBranco ++;
+	}
+
+	//sul
+	if (x + 1 <= src.rows){
+		sul = (int) (src.at<uchar>(x+1, y));
+		if(sul == 255)
+			qtdVisinhoBranco ++;
+	}
+
+	//oeste
+	if (y > 0) {
+		oeste = (int) (src.at<uchar>(x, y-1));
+		if(oeste == 255)
+			qtdVisinhoBranco ++;
+	}
+
+	//leste
+	if (y + 1 <= src.cols) {
+		leste = (int) (src.at<uchar>(x, y+1));
+		if(leste == 255)
+			qtdVisinhoBranco ++;
+	}
+
+	return qtdVisinhoBranco;
+}
+
+int obtemValorPixelMedia(Mat src, int linha, int coluna) {
+
+	int qtdPixel = 0;
+	int valorTotalPixel = 0;
+
+	/*  máscara 3x3
+
+	 	 mp1	mp2		mp3				l-1,c-1		l-1,c		l-1,c+1
+
+	 	 mp4	pixel	mp5		==>>	l,c-1		pixel		l,c+1
+
+	 	 mp6	mp7		mp8				l+1,c-1		l+1,c		l+1,c+1
+
+	*/
+
+	//mp2
+	if (linha > 0) {
+		int valorPixel = (int) src.at<uchar>(linha-1, coluna);
+		valorTotalPixel += valorPixel;
+		qtdPixel++;
+	}
+
+	//mp7
+	if (linha + 1 < src.rows) {
+		int valorPixel = (int) src.at<uchar>(linha+1, coluna);
+		valorTotalPixel += valorPixel;
+		qtdPixel++;
+	}
+
+	//mp4
+	if (coluna > 0) {
+		int valorPixel = (int) src.at<uchar>(linha, coluna-1);
+		valorTotalPixel += valorPixel;
+		qtdPixel++;
+	}
+
+	//mp5
+	if (coluna + 1 < src.cols) {
+		int valorPixel = (int) src.at<uchar>(linha, coluna+1);
+		valorTotalPixel += valorPixel;
+		qtdPixel++;
+	}
+
+	//mp1
+	if (linha > 0 && coluna > 0) {
+		int valorPixel = (int) src.at<uchar>(linha-1, coluna-1);
+		valorTotalPixel += valorPixel;
+		qtdPixel++;
+	}
+
+	//mp3
+	if (linha > 0 && coluna + 1 < src.cols) {
+		int valorPixel = (int) src.at<uchar>(linha-1, coluna+1);
+		valorTotalPixel += valorPixel;
+		qtdPixel++;
+	}
+
+	//mp8
+	if (linha + 1 < src.rows && coluna + 1 < src.cols) {
+		int valorPixel = (int) src.at<uchar>(linha+1, coluna+1);
+		valorTotalPixel += valorPixel;
+		qtdPixel++;
+	}
+
+	//mp6
+	if (linha + 1 < src.rows && coluna > 0) {
+		int valorPixel = (int) src.at<uchar>(linha+1, coluna-1);
+		valorTotalPixel += valorPixel;
+		qtdPixel++;
+	}
+
+	int novoValorPixel = valorTotalPixel / qtdPixel;
+
+	return novoValorPixel;
+}
+
+Mat diffImg(Mat srcImgBinarizada, Mat srcImgGray) {
+	int qtdLinha = srcImgBinarizada.rows;
+	int qtdColuna = srcImgBinarizada.cols;
+
+	//Cria uma imagem "imgBin" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgOut = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+
+	for (int i = 0; i < qtdLinha; i++) {
+		for (int j = 0; j < qtdColuna; j++) {
+			if ((int) srcImgBinarizada.at<uchar>(i, j) == 255)
+				imgOut.at<uchar>(i, j) = srcImgGray.at<uchar>(i, j);
+		}
+	}
+	return imgOut;
+}
+
+Mat rotularRegiao(Mat srcOriginal, Mat srcBinarizada) {
+	int qtdLinha = srcBinarizada.rows;
+	int qtdColuna = srcBinarizada.cols;
+
+	//Cria uma imagem "imgOut" com o mesmo número de linhas e colunas que a outra imagem, com 8 bits sem sinal e 1 canal
+	Mat imgLabel = cv::Mat::zeros(qtdLinha, qtdColuna, CV_8UC(1));
+
+	int MALR = 0; //maior label das regioes
+	int MLPV = 0; //menor label dos piels vizinhos
+	int menorLabel = 0;
+	int imgLabelVizinho[4]; // vetor dos vizinhos de imgLabel
+
+	//rotula as regiões com seus respectivos labels
+	for (int linha = 0; linha < qtdLinha; linha++) {
+		for (int coluna = 0; coluna < qtdColuna; coluna++) {
+			if ((int) srcBinarizada.at<uchar>(linha, coluna) == 255) {
+				//obtém o menor label dos pixels vizinhos da imgOut maiores que zero
+				/********************************************************************
+				 * máscara
+				 	 	 	 | mp1	 mp2	mp3				l-1,c-1		l-1,c	l-1,c+1
+				 	 	 	 | mp4	 pixel			==>>	l,c-1		pixel
+				 */
+
+				//armazena em um vetor os valores dos vizinhos
+				//mp4
+				if (coluna > 0) imgLabelVizinho[0] = (int) imgLabel.at<uchar>(linha, coluna-1);
+				else imgLabelVizinho[0] = 0;
+
+				//mp1
+				if (linha > 0 && coluna > 0) imgLabelVizinho[1] = (int) imgLabel.at<uchar>(linha-1, coluna-1);
+				else imgLabelVizinho[1] = 0;
+
+				//mp2
+				if (linha > 0) imgLabelVizinho[2] = (int) imgLabel.at<uchar>(linha-1, coluna);
+				else imgLabelVizinho[2] = 0;
+
+				//mp3
+				if (linha > 0 && coluna + 1 < srcBinarizada.cols) imgLabelVizinho[3] = (int) imgLabel.at<uchar>(linha-1, coluna+1);
+				else imgLabelVizinho[3] = 0;
+
+
+				//ordena o vetor de vizinhos em ordem crescente (buble sort)
+				int aux;
+				for (int i = 0; i <= 2; i++){
+					for (int j = i + 1; j <= 3; j++) {
+						if (imgLabelVizinho[i] > imgLabelVizinho[j]) {
+							aux = imgLabelVizinho[i];
+							imgLabelVizinho[i] = imgLabelVizinho[j];
+							imgLabelVizinho[j] = aux;
+						}
+					}
+				}
+
+				//procura no vetor de vizinhos o primeiro label maior do que zero
+				//esse label será atribuído aos pixels constituintes da máscara da imgLabel
+				int i = 0;
+				menorLabel = 0;
+				while ( i < 4 ) {
+					if (imgLabelVizinho[i] > 0) {
+						menorLabel = imgLabelVizinho[i];
+						i = 4; //faz sair do loop
+					} else i++;  //verifica o próximo valor
+				}
+
+				MLPV = menorLabel;
+				//********************************************************************
+				//verifica se há necessidade de criar uma nova região
+				if (MLPV > MALR)
+					MALR = MLPV;
+
+				if (MLPV == 0) {
+					MLPV = MALR + 1;  //obtém o valor do label da próxima região
+					MALR = MLPV;
+				}
+
+				//atribui o valor do label identificado (MLPV) aos vizinhos != 0 e ao pixel na imgLabel
+				//*************************************************************************************
+				//mp4
+				if (coluna > 0) {
+					int valorPixel = (int) imgLabel.at<uchar>(linha, coluna-1);
+					//se vizinho != 0, entao atribua a ele o menor label dos pixels vizinhos ao pixel em análise
+					if (valorPixel != 0) imgLabel.at<uchar>(linha, coluna-1) = MLPV;
+				}
+
+				//mp1
+				if (linha > 0 && coluna > 0) {
+					int valorPixel = (int) imgLabel.at<uchar>(linha-1, coluna-1);
+					if (valorPixel != 0) imgLabel.at<uchar>(linha-1, coluna-1) = MLPV;
+				}
+
+				//mp2
+				if (linha > 0) {
+					int valorPixel = (int) imgLabel.at<uchar>(linha-1, coluna);
+					if (valorPixel != 0) imgLabel.at<uchar>(linha-1, coluna) = MLPV;
+				}
+
+				//mp3
+				if (linha > 0 && coluna + 1 < srcBinarizada.cols) {
+					int valorPixel = (int) imgLabel.at<uchar>(linha-1, coluna+1);
+					if (valorPixel != 0) imgLabel.at<uchar>(linha-1, coluna+1) = MLPV;
+				}
+				imgLabel.at<uchar>(linha, coluna) = MLPV;
+			}
+		}
+	}
+	//**************************************************************************
+	//obtém o maior label da região na imgLabel
+	int maiorLabel = maiorLabelRegiao(imgLabel);
+
+	int menorX = qtdLinha, menorY = qtdColuna, maiorX = 0, maiorY = 0; //Coordenada da ROI = (menorX, menorY) x (maiorX, maiorY)
+
+	//**************************************************************************
+	//obtém a região de interesse dessa maior região, ou seja, duas coordenadas
+	for (int linha = 0; linha < qtdLinha; linha++) {
+		for (int coluna = 0; coluna < qtdColuna; coluna++) {
+			if ((int) imgLabel.at<uchar>(linha, coluna) == maiorLabel) {
+				if (linha < menorX)   //verifica menor linha
+					menorX = linha;
+				if (coluna < menorY)  //verifica menor coluna
+					menorY = coluna;
+				if (linha > maiorX)   //verifica maior linha
+					maiorX = linha;
+				if (coluna > maiorY)  //verifica maior coluna
+					maiorY = coluna;
+			}
+		}
+	}
+
+	int qtdLinhasImgROI = (maiorX - menorX) + 1,
+		qtdColunasImgROI = (maiorY - menorY) + 1;
+
+	Mat imgROIRecortada = cv::Mat::zeros(qtdLinhasImgROI, qtdColunasImgROI, srcOriginal.type());
+
+	for (int i = 0; i < qtdLinhasImgROI; i++) {
+		for (int j = 0; j < qtdColunasImgROI; j++) {
+			imgROIRecortada.at<uchar>(i, j) = srcOriginal.at<uchar>(menorX + i, menorY + j);
+			//cout << "i, j = " << i << "," << j << " --- menorX + i, menorY + j = " << menorX + i << "," << menorY + j << endl;
+		}
+	}
+
+	//**************************************************************************
+	//Pinta região de interesse na matriz src
+	for (int i = menorX; i <= maiorX; i++) {
+		for (int j = menorY; j <= maiorY; j++) {
+
+			//cout << "ii, jj = " << ii << "," << jj << endl;
+			//imgROIRecortada.at<uchar>(ii, jj) = srcOriginal.at<uchar>(i, j);
+
+			if (i == menorX || i == maiorX || j == menorY || j == maiorY) {
+				srcOriginal.at<uchar>(i, j) = 255;
+				//cout << "pinta srcOriginal[" << i << "," << j << "]"<< endl;
+			}
+		}
+	}
+	cv::namedWindow("Imagem ROI Demarcada", CV_WINDOW_NORMAL);
+	cv::imshow("Imagem ROI Demarcada", srcOriginal);
+	salvarImagem("C:/Documents and Settings/usuario/Desktop/Código-fonte PDI/Prova 01 - PDI/Questão 4/imgROIDemarcada.jpg", srcOriginal);
+
+	//return srcOriginal; //retorna a matriz de entrada com região da clareira demarcada
+	return imgROIRecortada;  //retorna a região de maior clareira
+}
+
+int maiorLabelRegiao(Mat matLab) {
+	int qtdLinha = matLab.rows;
+	int qtdColuna = matLab.cols;
+	//Procura o label maior que tem na imagem (representa a qtd de regiões)
+	int maiorLabelRegiao = 0; //label da região com maior qtd de pixels ()
+
+	for(int i = 0; i < qtdLinha; ++i) {
+		for(int j = 0; j < qtdColuna; ++j) {
+			if ((int) matLab.at<uchar>(i, j) > 0 && (int) matLab.at<uchar>(i, j) > maiorLabelRegiao)
+				maiorLabelRegiao = (int) matLab.at<uchar>(i, j);
+		}
+	}
+	int qtdRegiao = maiorLabelRegiao;
+
+	//se qtd de regioes for maior que zero, então obtenha a região com maior qtd de pixels
+	if (qtdRegiao > 0) {
+		/************************************************************************************
+		* obtém a qtd de pixels por regiao
+		*/
+		int vetorRegiao[qtdRegiao];  //vetor com a quantidade de pixels por valor de intensidade
+		memset(vetorRegiao, 0, sizeof(int) * qtdRegiao);  //inicializa cada posição do vetor com 0
+
+		//contabiliza a quantidade de pixels por região
+		for(int i = 0; i < qtdLinha; ++i) {
+			for(int j = 0; j < qtdColuna; ++j) {
+				if ((int) matLab.at<uchar>(i, j) > 0) //nao contabiliza pixels com valor zero, pois é o background
+					vetorRegiao[(int) matLab.at<uchar>(i, j)]++;
+			}
+		}
+/*
+		for (int i=1; i <= qtdRegiao; i++) {
+			cout << " vetorRegiao[" << i << "] : " << vetorRegiao[i] << endl;
+		}
+*/
+		//atribui o primeiro o índice do vetor como o maior qtd de pixels
+		int maior = vetorRegiao[1], indiceMaior = 1;
+		//obtém o índice do vetor com a maior qtd de pixels
+		for (int i = 2; i <= qtdRegiao; i++) {
+			if (vetorRegiao[i] > maior) {
+				indiceMaior = i;
+				maior = vetorRegiao[i];
+			}
+		}
+		return indiceMaior;  //retorna o label da região com maior qtd de pixels (maior clareira)
+	} else return 0; //indica que não existe regiões na matriz
+}
+
+Mat zoomInterpolacaoBilinear(Mat srcImgOriginal, Mat srcImgROI) {
+	//obtém dimensão da imagem Original
+	cv::Size sizeImgOriginal = srcImgOriginal.size();
+	int imgOriginalLinhas = sizeImgOriginal.height;
+	int imgOriginalColunas = sizeImgOriginal.width;
+	//obtém dimensão da imagem ROI
+	cv::Size sizeImgROI = srcImgROI.size();
+	int imgROILinhas = sizeImgROI.height;
+	int imgROIColunas = sizeImgROI.width;
+
+	//calcula o fator de zoom
+	float M = imgOriginalLinhas / imgROILinhas;   // M = número de vezes a altura da imagem
+	float N = imgOriginalColunas / imgROIColunas; // N = número de vezes a largura da imagem
+	float fatorZoom = (M + N)/2;  //fator de zoom
+
+	//dimensão da imagem com zoom
+	int numLinhasImgZoom;
+	int numColunasImgZoom;
+	//obtém a dimensão da imgZoom verificando a maior dimensão da imgROI
+	if (imgROILinhas > imgROIColunas){
+		numLinhasImgZoom = imgOriginalLinhas;  //Atribui a maior dimensão da imgROI a imZoom
+		float percAumentoLinha = (imgROILinhas * 100) / imgOriginalLinhas;  //obtém o percentual de aumento de linhas
+		numColunasImgZoom = imgROIColunas + ((percAumentoLinha * imgOriginalColunas)/100);  //obtém a qtdColunas proporcional ao aumento de qtdLinhas
+	}else if (imgROILinhas < imgROIColunas){
+		numColunasImgZoom = imgOriginalColunas;  //Atribui a maior dimensão da imgROI a imZoom
+		float percAumentoColuna = (imgROIColunas * 100) / imgOriginalColunas;  //obtém o percentual de aumento de colunas
+		numLinhasImgZoom = imgROILinhas + ((percAumentoColuna * imgOriginalLinhas)/100);  //obtém a qtdLinhas proporcional ao aumento de qtdColunas
+	}else {
+		numLinhasImgZoom = imgOriginalLinhas;
+		numColunasImgZoom =	imgOriginalColunas;
+	}
+	//Cria uma imagem "imZoom", com 8 bits sem sinal e 1 canal
+	Mat imgZoom = cv::Mat::zeros(numLinhasImgZoom, numColunasImgZoom, srcImgROI.type());
+
+    int lin = imgROILinhas;
+	int col = imgROIColunas;
+	float xRelacao = imgROILinhas / (float) numLinhasImgZoom;
+	float yRelacao = imgROIColunas / (float) numColunasImgZoom;
+
+	float diferencaX, diferencaY;
+	int valuePixel;
+	int a, b, c, d, x, y;
+
+	for (int i = 0; i < numLinhasImgZoom; i++) {
+		for (int j = 0; j < numColunasImgZoom; j++) {
+			x = (int)(xRelacao * i);
+			y = (int)(yRelacao * j);
+			diferencaX = (xRelacao * i) - x;
+			diferencaY = (yRelacao * j) - y;
+
+			a = srcImgROI.at<uchar>(MAX(x-1,0)    , MAX(y-1,0));
+			b = srcImgROI.at<uchar>(MIN(x+1,lin-1), MAX(y-1,0));
+			c = srcImgROI.at<uchar>(MAX(x-1,0)    , MIN(y+1,col-1));
+			d = srcImgROI.at<uchar>(MIN(x+1,lin-1), MIN(y+1,col-1));
+
+			//calcula valor do pixels
+			valuePixel = a * (1-diferencaX) * (1-diferencaY) +
+						 b * (diferencaX) 	* (1-diferencaY) +
+						 c * (diferencaY) 	* (1-diferencaX) +
+						 d * (diferencaX*diferencaY);
+/*
+			valuePixel = (a&0xff) * (1-diferencaX) * (1-diferencaY) +
+						 (b&0xff) * (diferencaX) * (1-diferencaY) 	+
+		        		 (c&0xff) * (diferencaY) * (1-diferencaX) 	+
+		        		 (d&0xff) * (diferencaX*diferencaY);
+*/
+			imgZoom.at<uchar>(i, j) = (int) valuePixel;
+		}
+	}
+	return imgZoom;
+}
+
+Mat zoomInterpolacaoBilinear1(Mat srcImgOriginal, Mat srcImgROI) {
+	//obtém dimensão da imagem Original
+	cv::Size sizeImgOriginal = srcImgOriginal.size();
+	int imgOriginalLinhas = sizeImgOriginal.height;
+	int imgOriginalColunas = sizeImgOriginal.width;
+	//obtém dimensão da imagem ROI
+	cv::Size sizeImgROI = srcImgROI.size();
+	int imgROILinhas = sizeImgROI.height;
+	int imgROIColunas = sizeImgROI.width;
+
+	//calcula o fator de zoom
+	float M = imgOriginalLinhas / imgROILinhas;   // M = número de vezes a altura da imagem
+	float N = imgOriginalColunas / imgROIColunas; // N = número de vezes a largura da imagem
+	float fatorZoom = (M + N)/2;  //fator de zoom
+
+	//dimensão da imagem com zoom
+	int numLinhasImgZoom = floor(fatorZoom * imgROILinhas);
+	int numColunasImgZoom = floor(fatorZoom * imgROIColunas);;
+
+	//Cria uma imagem "imZoom", com 8 bits sem sinal e 1 canal
+	Mat imgZoom = cv::Mat::zeros(numLinhasImgZoom, numColunasImgZoom, srcImgROI.type());
+
+	for (int i = 0; i < numLinhasImgZoom; i++) {
+		int valorX = i/fatorZoom;
+		int x1 = floor(valorX);  //valor arredondado para baixo
+		int x2 = ceil(valorX);   //valor arredondado para cima
+
+		if (x1 == 0)
+			x1 = 1;
+
+		int x = (int)(valorX)%1; //resto da divisão
+
+		for (int j = 0; j < numColunasImgZoom; j++) {
+			int valorY = j/fatorZoom;
+			int y1 = floor(valorY); //valor arredondado para baixo
+			int y2 = ceil(valorY); //valor arredondado para cima
+
+			if (y1 == 0)
+				y1 = 1;
+
+			int y = (int)(valorY)%1; //resto da divisão
+/*
+			int ctl = (int) srcImgROI.at<uchar>(x1, y1);
+			int ctr = (int) srcImgROI.at<uchar>(x1, y2);
+			int cbl = (int) srcImgROI.at<uchar>(x2, y1);
+			int cbr = (int) srcImgROI.at<uchar>(x2, y2);
+
+			int tr = (ctr*y) + (ctl*(1-y));
+			int br = (cbr*y) + (cbl*(1-y));
+
+			imgZoom.at<uchar>(i, j) = (int) ((br*x) + (tr*(1-x)));
+*/
+
+			int AcimaL  = (int) srcImgROI.at<uchar>(x1, y2);  //ctr
+			int AcimaR  = (int) srcImgROI.at<uchar>(x2, y2);  //cbr
+			int AbaixoL = (int) srcImgROI.at<uchar>(x1, y1);  //ctl
+			int AbaixoR = (int) srcImgROI.at<uchar>(x2, y1);  //cbl
+
+			int R1 = AbaixoR*y + AbaixoL*(1-y);  //tr
+			int R2 = AcimaR*y + AcimaL*(1-y);  //br
+
+			imgZoom.at<uchar>(i, j) = (int) ((R1*x) + (R2*(1-x)));
+		}
+	}
+	return imgZoom;
+}
+
+Mat zoomInterpolacaoBicubica(Mat srcImgOriginal, Mat srcImgROI) {
+	//obtém dimensão da imagem Original
+	cv::Size sizeImgOriginal = srcImgOriginal.size();
+	int imgOriginalLinhas = sizeImgOriginal.height;
+	int imgOriginalColunas = sizeImgOriginal.width;
+	//obtém dimensão da imagem ROI
+	cv::Size sizeImgROI = srcImgROI.size();
+	int imgROILinhas = sizeImgROI.height;
+	int imgROIColunas = sizeImgROI.width;
+
+	//dimensão da imagem com zoom
+	int numLinhasImgZoom;
+	int numColunasImgZoom;
+	//obtém a dimensão da imgZoom verificando a maior dimensão da imgROI
+	if (imgROILinhas > imgROIColunas){
+		numLinhasImgZoom = imgOriginalLinhas;  //Atribui a maior dimensão da imgROI a imZoom
+		float percAumentoLinha = (imgROILinhas * 100) / imgOriginalLinhas;  //obtém o percentual de aumento de linhas
+		numColunasImgZoom = imgROIColunas + ((percAumentoLinha * imgOriginalColunas)/100);  //obtém a qtdColunas proporcional ao aumento de qtdLinhas
+	}else if (imgROILinhas < imgROIColunas){
+		numColunasImgZoom = imgOriginalColunas;  //Atribui a maior dimensão da imgROI a imZoom
+		float percAumentoColuna = (imgROIColunas * 100) / imgOriginalColunas;  //obtém o percentual de aumento de colunas
+		numLinhasImgZoom = imgROILinhas + ((percAumentoColuna * imgOriginalLinhas)/100);  //obtém a qtdLinhas proporcional ao aumento de qtdColunas
+	}else {
+		numLinhasImgZoom = imgOriginalLinhas;
+		numColunasImgZoom =	imgOriginalColunas;
+	}
+	//Cria uma imagem "imZoom", com 8 bits sem sinal e 1 canal
+	Mat imgZoom = cv::Mat::zeros(numLinhasImgZoom, numColunasImgZoom, srcImgROI.type());
+
+    int lin = imgROILinhas;
+	int col = imgROIColunas;
+	float xRelacao = imgROILinhas / (float) numLinhasImgZoom;
+	float yRelacao = imgROIColunas / (float) numColunasImgZoom;
+
+	int vetorVizinhos[4][4];
+	int valuePixel;
+	float a, b, c, d, x, y;
+	float diferencaX, diferencaY;
+
+	for (int i = 0; i < numLinhasImgZoom; i++) {
+		for (int j = 0; j < numColunasImgZoom; j++) {
+			x = (int)(xRelacao * i);
+			y = (int)(yRelacao * j);
+			diferencaX = (xRelacao * i) - x;
+			diferencaY = (yRelacao * j) - y;
+			//obtém valores dos pixels vizinhos
+			for (int m=0; m<4; m++) {
+				for (int n=0; n<4; n++) {
+					vetorVizinhos[m][n] = srcImgROI.at<uchar>(MIN(lin-1,MAX(0,x+m-1)), MIN(col-1,MAX(0,y+n-1)));
+				}
+			}
+			//calcula valor do novo pixel
+			a = polarizacaoCubica(vetorVizinhos[0][0], vetorVizinhos[1][0], vetorVizinhos[2][0], vetorVizinhos[3][0], diferencaX);
+			b = polarizacaoCubica(vetorVizinhos[0][1], vetorVizinhos[1][1], vetorVizinhos[2][1], vetorVizinhos[3][1], diferencaX);
+			c = polarizacaoCubica(vetorVizinhos[0][2], vetorVizinhos[1][2], vetorVizinhos[2][2], vetorVizinhos[3][2], diferencaX);
+			d = polarizacaoCubica(vetorVizinhos[0][3], vetorVizinhos[1][3], vetorVizinhos[2][3], vetorVizinhos[3][3], diferencaX);
+			valuePixel = polarizacaoCubica(a, b, c, d, diferencaY);
+			imgZoom.at<uchar>(i, j) = (int) valuePixel;
+		}
+	}
+	return imgZoom;
+}
+
+float polarizacaoCubica(float valor0, float valor1, float valor2, float valor3, float fracao) {
+	float a = (valor3-valor2)-(valor0-valor1);
+	float b = (valor0-valor1)-a;
+	float c = valor2-valor0;
+	float d = valor1;
+	return (float)(a*pow(fracao,3)) + (float)(b*pow(fracao,2)) + c * fracao + d;
+}
+
+Mat zoomInterpolacaoLinear(Mat srcImgOriginal, Mat srcImgROI) {
+	//obtém dimensão da imagem Original
+	cv::Size sizeImgOriginal = srcImgOriginal.size();
+	int imgOriginalLinhas = sizeImgOriginal.height;
+	int imgOriginalColunas = sizeImgOriginal.width;
+	//obtém dimensão da imagem ROI
+	cv::Size sizeImgROI = srcImgROI.size();
+	int imgROILinhas = sizeImgROI.height;
+	int imgROIColunas = sizeImgROI.width;
+
+	//dimensão da imagem com zoom
+	int numLinhasImgZoom;
+	int numColunasImgZoom;
+	//obtém a dimensão da imgZoom verificando a maior dimensão da imgROI
+	if (imgROILinhas > imgROIColunas){
+		numLinhasImgZoom = imgOriginalLinhas;  //Atribui a maior dimensão da imgROI a imZoom
+		float percAumentoLinha = (imgROILinhas * 100) / imgOriginalLinhas;  //obtém o percentual de aumento de linhas
+		numColunasImgZoom = imgROIColunas + ((percAumentoLinha * imgOriginalColunas)/100);  //obtém a qtdColunas proporcional ao aumento de qtdLinhas
+	}else if (imgROILinhas < imgROIColunas){
+		numColunasImgZoom = imgOriginalColunas;  //Atribui a maior dimensão da imgROI a imZoom
+		float percAumentoColuna = (imgROIColunas * 100) / imgOriginalColunas;  //obtém o percentual de aumento de colunas
+		numLinhasImgZoom = imgROILinhas + ((percAumentoColuna * imgOriginalLinhas)/100);  //obtém a qtdLinhas proporcional ao aumento de qtdColunas
+	}else {
+		numLinhasImgZoom = imgOriginalLinhas;
+		numColunasImgZoom =	imgOriginalColunas;
+	}
+	//Cria uma imagem "imZoom", com 8 bits sem sinal e 1 canal
+	Mat imgZoom = cv::Mat::zeros(numLinhasImgZoom, numColunasImgZoom, srcImgROI.type());
+
+	double xRatio = imgROILinhas / (double) numLinhasImgZoom;
+	double yRatio = imgROIColunas / (double) numColunasImgZoom;
+
+	//cout << "xRatio = " << xRatio << ";   yRatio = " << yRatio << endl;
+
+	int x, y;
+	for (int i = 0; i < numLinhasImgZoom; i++) {
+		for (int j = 0; j < numColunasImgZoom; j++) {
+			x = (int) floor(i * xRatio); //arredonda para baixo
+			y = (int) floor(j * yRatio); //arredonda para baixo
+
+			imgZoom.at<uchar>(i, j) = srcImgROI.at<uchar>(x, y);
+		}
+	}
+	return imgZoom;
+}
+
+void salvarImagem(const char * endereco, Mat img) {
+	IplImage* imgIpl = new IplImage(img);
+
+	if(!cvSaveImage(endereco, imgIpl, 0))
+		cout << "Erro ao salva a imagem" << endl;
+	else
+		cout << "Imagem salva com sucesso" << endl;
+}
